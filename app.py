@@ -14,6 +14,12 @@ from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QThread
 from PyQt5.uic import loadUi
 
 
+import requests
+import json
+from geopy.geocoders import Nominatim
+import geocoder
+
+
 class HomeScreen(QMainWindow):
     def __init__(self, widgets):
         super(HomeScreen, self).__init__()
@@ -21,27 +27,13 @@ class HomeScreen(QMainWindow):
 
         self.widgets = widgets
 
-        self.btnStart.clicked.connect(self.gotoMainMenu)
-
-    def gotoMainMenu(self):
-        self.widgets.setCurrentIndex(widgets.currentIndex() + 1)
+        self.btnStart.clicked.connect(self.startVisionAcuity)
 
 
-class MenuScreen(QMainWindow):
-    def __init__(self, widgets):
-        super(MenuScreen, self).__init__()
-        loadUi('menu.ui', self)
-
-        self.widgets = widgets
-
-        self.btnHome.clicked.connect(self.gotoHome)
-        self.btnAcuity.clicked.connect(self.startVisionAcuity)
-
-    def gotoHome(self):
-        self.widgets.setCurrentIndex(0)
 
     def startVisionAcuity(self):
         self.widgets.setCurrentIndex(widgets.currentIndex() + 1)
+
 
 
 class VideoThread(QThread):
@@ -56,7 +48,7 @@ class VideoThread(QThread):
 
     kernel = np.ones((9, 9), np.uint8)
 
-    focal_length = 1076.92
+    focal_length = 5076.92
     iris_diameter_cm = 1.17
 
     is_camera_running = True
@@ -82,7 +74,7 @@ class VideoThread(QThread):
 
     def run(self):
         # capture from web cam
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(1)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 260)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 180)
         while self.is_camera_running:
@@ -112,6 +104,8 @@ class VideoThread(QThread):
                 dist = dist / ctr
                 self.change_pixmap_signal.emit(img)
                 self.change_dist_signal.emit(int(dist))
+
+
 
 
 class VisionTestThread(QThread):
@@ -297,18 +291,50 @@ class ResultsScreen(QMainWindow):
         MAR_score = self.calculateMAR()
         self.mar_label.setText(str(MAR_score))
 
+        #API call
+        g = geocoder.ip('me')
+
+        geolocator = Nominatim(user_agent="geoapiExercises")
+        Latitude = f"{g.latlng[0]}"
+        Longitude = f"{g.latlng[1]}"
+
+        location = geolocator.reverse(Latitude + "," + Longitude)
+
+        # Display
+        # print(location)
+        address = location.raw['address']
+        # print(address["city"])
+        # Set the base URL and query parameters
+        base_url = "https://nominatim.openstreetmap.org/search"
+
+        city = address["city"]
+        type = f"eye+clinic+in+{city}+india"
+
+        # Make the API request
+        url = f"{base_url}?q={type}&format=json&limit=10&accept-language=en"
+        response = requests.get(url)
+
+        # Parse the response
+        data = json.loads(response.text)
+
+        # Print the names of the doctors that were found
+        s="\n"
+        for doctor in data:
+            s+=doctor["display_name"] + "\n"
+
         if MAR_score >= 0.4:
             self.status.setText(
-                'Your eyesight is poor. You need to immediately consult a doctor.')
+                f'Your eyesight is poor. You need to immediately consult a doctor.\n Nearby Doctors:{s}')
             self.status.setStyleSheet('color: red;')
         elif MAR_score >= 0.1:
             self.status.setText(
-                'Your eyesight is weak. Do consult a doctor as soon as possible.')
+                f'Your eyesight is weak. Do consult a doctor as soon as possible.\n Nearby Doctors:{s}')
             self.status.setStyleSheet('color: orange;')
         else:
             self.status.setText(
                 'You have a perfect MAR score. Your eyes are healthy.')
             self.status.setStyleSheet('color: green;')
+
 
     def calculateMAR(self):
         bestMAR, opt_missed = 0.0, 0
@@ -327,6 +353,7 @@ class ResultsScreen(QMainWindow):
         self.widgets.setCurrentIndex(widgets.currentIndex() + 1)
 
 
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     screen = app.screens()[0]
@@ -335,15 +362,15 @@ if __name__ == '__main__':
     widgets = QtWidgets.QStackedWidget()
 
     homeScreen = HomeScreen(widgets)
-    menuScreen = MenuScreen(widgets)
+    # menuScreen = MenuScreen(widgets)
     visionAcuityDist = VisionAcuity(dpX, dpY, widgets)
 
     widgets.addWidget(homeScreen)
-    widgets.addWidget(menuScreen)
+    # widgets.addWidget(menuScreen)
     widgets.addWidget(visionAcuityDist)
 
     widgets.setFixedSize(800, 600)
-    widgets.setWindowTitle('DrishtiCon')
+    widgets.setWindowTitle('Real Time Eye Checkup')
 
     widgets.show()
 
